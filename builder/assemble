@@ -1,0 +1,106 @@
+#!/bin/bash
+
+set -ex
+
+mkdir -p /output/bindep
+mkdir -p /output/wheels
+mkdir -p /tmp/src
+
+cd /tmp/src
+
+apt-get update
+
+
+function install_bindep {
+    # Protect from the bindep builder image use of the assemble script
+    # to produce a wheel.  Note we append because we want all
+    # sibling packages in here too
+    if [ -f bindep.txt ] ; then
+        bindep -l newline | sort >> /output/bindep/run.txt || true
+        compile_packages=$(bindep -b compile || true)
+        if [ ! -z "$compile_packages" ] ; then
+            apt-get install -y --no-install-recommends ${compile_packages}
+        fi
+    fi
+}
+
+
+
+function install_wheels {
+    # NOTE(pabelanger): If there are build requirements to install, do so.
+    # However do not cache them as we do not want them in the final image.
+    if [ -f /tmp/src/build-requirements.txt ] && [ ! -f /tmp/src/.build-requirements.txt ] ; then
+        pip3 install $CONSTRAINTS $PIP_OPTS --no-cache -r /tmp/src/build-requirements.txt
+        touch /tmp/src/.build-requirements.txt
+    fi
+    # Build a wheel so that we have an install target.
+    # pip install . in the container context with the mounted
+    # source dir gets ... exciting, if setup.py exists.
+    # We run sdist first to trigger code generation steps such
+    # as are found in zuul, since the sequencing otherwise
+    # happens in a way that makes wheel content copying unhappy.
+    # pip wheel isn't used here because it puts all of the output
+    # in the output dir and not the wheel cache, so it's not
+    # possible to tell what is the wheel for the project and
+    # what is the wheel cache.
+    if [ -f setup.py ] ; then
+        python3 setup.py sdist bdist_wheel -d /output/wheels
+    fi
+
+    # Install everything so that the wheel cache is populated with
+    # transitive depends. If a requirements.txt file exists, install
+    # it directly so that people can use git url syntax to do things
+    # like pick up patched but unreleased versions of dependencies.
+    # Only do this for the main package (i.e. only write requirements
+    # once).
+    if [ -f /tmp/src/requirements.txt ] && [ ! -f /output/requirements.txt ] ; then
+        pip3 install $CONSTRAINTS $PIP_OPTS --cache-dir=/output/wheels -r /tmp/src/requirements.txt
+        cp /tmp/src/requirements.txt /output/requirements.txt
+    fi
+    # If we didn't build wheels, we can skip trying to install it.
+    if [ $(ls -1 /output/wheels/*whl 2>/dev/null | wc -l) -gt 0 ]; then
+        pip3 uninstall -y /output/wheels/*.whl
+        pip3 install $CONSTRAINTS $PIP_OPTS --cache-dir=/output/wheels /output/wheels/*whl
+    fi
+}
+
+
+PACKAGES=$*
+PIP_OPTS="${PIP_OPTS-}"
+
+# bindep the main package
+install_bindep
+
+
+# Use a clean virtualenv for install steps to prevent things from the
+# current environment making us not build a wheel.
+# NOTE(pabelanger): We allow users to install distro python packages of
+# libraries. This is important for projects that eventually want to produce
+# an RPM or offline install.
+python3 -m venv /tmp/venv --system-site-packages --without-pip
+source /tmp/venv/bin/activate
+
+
+
+
+# If there is an upper-constraints.txt file in the source tree,
+# use it in the pip commands.
+if [ -f /tmp/src/upper-constraints.txt ] ; then
+    cp /tmp/src/upper-constraints.txt /output/upper-constraints.txt
+    CONSTRAINTS="-c /tmp/src/upper-constraints.txt"
+fi
+
+# If we got a list of packages, install them, otherwise install the
+# main package.
+if [[ $PACKAGES ]] ; then
+    pip3 install $CONSTRAINTS $PIP_OPTS --cache-dir=/output/wheels $PACKAGES
+    for package in $PACKAGES ; do
+      echo "$package" >> /output/packages.txt
+    done
+else
+    install_wheels
+fi
+
+
+rm -rf /var/lib/apt/lists/*
+rm -rf /tmp/venv

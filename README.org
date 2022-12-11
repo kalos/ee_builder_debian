@@ -1,0 +1,71 @@
+* Ansible builder/runner images based on debian
+s base image to build "ansible-builder" and "ansible-runner" images.
+
+** Execution Environment (ee)
+Execution Environments are container images that serve as Ansible control nodes.
+
+An Execution Environment is expected to contain:
+- Ansible
+- Ansible Runner
+- Ansible Collections
+- Python and/or system dependencies of:
+  - modules/plugins in collections
+  - content in ansible-base
+  - custom user needs
+
+[[https://ansible-builder.readthedocs.io/en/latest/#execution-environments][site reference]]
+** Ansible builder base image
+
+#+BEGIN_SRC shell
+cd builder
+docker build -t kalos/ansible-builder:latest .
+#+END_SRC
+
+This directory contain 2 script from original builder image: quay.io/ansible/ansible-builder
+(similar to https://github.com/ansible/python-builder-image).
+
+** Ansible runner base image
+
+#+BEGIN_SRC shell
+cd ../runner
+docker build -t kalos/ansible-runner:2.14 .
+#+END_SRC
+
+(similar to https://github.com/ansible/ansible-runner/blob/devel/Dockerfile).
+** Create Execution Environment (ee)
+
+In this stage you can add/modify python and ansible galaxy requirements
+
+#+BEGIN_SRC shell
+ansible-builder build --tag kalos/ee --container-runtime docker -v 3
+#+END_SRC
+** Using ee
+
+#+BEGIN_SRC shell
+cd ../ee
+ansible-runner run -p ping.yml .
+
+# adv example:
+#ansible-runner run . --rotate-artifacts 6 --container-volume-mount /home/kalos/.ssh:/home/runner/.ssh:ro --cmdline="-i ../inventory/hosts/libreit.py" --limit libreit-ponyo -p debian-upgrade.yml -vv
+
+# debug:
+#docker run --workdir /runner/project --user=1000 -v /home/kalos/projects/devops/ansible/ee_runner/:/runner/:Z -v /home/kalos/.ssh_sync:/home/runner/.ssh_sync:ro -v /home/kalos/.ssh:/home/runner/.ssh:ro -it --rm kalos/ee /bin/bash
+
+#+END_SRC
+** Reference
+
+[[https://blog.networktocode.com/post/ansible-builder-runner-ee/][Overview of ansible builder, runner and ee]]
+
+
+Official images (using centos:stream8)
+- https://github.com/ansible/python-base-image
+- https://github.com/ansible/python-builder-image
+- https://github.com/ansible/ansible-builder/
+- https://github.com/ansible/ansible-runner
+
+
+Using centos:stream9:
+- https://github.com/ryanmerolle/python-base-image
+- https://github.com/ryanmerolle/python-builder-image
+- https://github.com/ryanmerolle/ansible-builder
+- https://github.com/ryanmerolle/ansible-runner

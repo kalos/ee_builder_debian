@@ -1,0 +1,4 @@
+---
+container_image: kalos/ee
+process_isolation_executable: docker # or podman
+process_isolation: true

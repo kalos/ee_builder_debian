@@ -1,0 +1,10 @@
+ansible-compat
+#ansible-core==2.12.*
+ansible-core<2.15
+ansible-lint
+molecule
+paramiko
+yamllint
+
+zabbix_api
+netaddr

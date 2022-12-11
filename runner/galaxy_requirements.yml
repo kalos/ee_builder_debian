@@ -1,0 +1,7 @@
+---
+collections:
+  - name: ansible.posix
+  - name: community.general
+  - name: community.zabbix
+  - name: debops.roles03
+  - name: containers.podman

@@ -1,0 +1,23 @@
+---
+version: 2
+
+images:
+  builder_image:
+    name: 'kalos/ansible-builder:latest'
+    signature_required: false
+  base_image:
+    name: 'kalos/ansible-runner:2.14'
+    signature_required: false
+
+ansible_config: 'ansible.cfg'
+
+dependencies:
+  galaxy: galaxy_requirements.yml
+  python: python_requirements.txt
+  #system: bindep.txt
+
+additional_build_steps:
+  prepend: |
+    RUN pip install --upgrade pip setuptools
+#  append:
+#    - RUN ansible-galaxy collection install arista.avd -p /usr/share/ansible/collections/ansible_collections
